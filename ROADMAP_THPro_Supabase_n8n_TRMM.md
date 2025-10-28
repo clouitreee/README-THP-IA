@@ -1,82 +1,112 @@
-# THP-MSP Roadmap (Infra 2025) 🚀
+# Tech Hilfe Pro · Roadmap MSP 2025 🚀
+**Objetivo:** catálogo de servicios claro (privados y PYMEs), arquitectura y plan de ejecución. Alineado a Zero Trust, NIS2/BSI y a la realidad de un MSP que empieza y quiere escalar sin romper nada.
 
-> Estado: Supabase + n8n autoalojados; túnel activo para n8n. Pendiente: correo/Auth, túneles para Supabase, backups, observabilidad y hardening.
+---
 
-## 🧭 Arquitectura objetivo (vista rápida)
+## 1) Oferta de servicios por segmentos 🧩
 
-Internet
-  │
-  ▼
-Cloudflare (DNS + Zero Trust)
-  │  ├─ CNAME/AAAA → Argo Tunnel (cloudflared)
-  │  └─ Access (opcional) con policies por email/IP
-  ▼
-cloudflared @ server01
-  ├─ api.techhilfepro.de   → http://127.0.0.1:8000    (Supabase API Gateway)
-  ├─ studio.techhilfepro.de→ http://127.0.0.1:3000    (Supabase Studio)
-  ├─ n8n.techhilfepro.de   → http://127.0.0.1:5678    (n8n)
-  └─ fallback              → http_status:404
-                           (sin puerto 5432 expuesto)
+### 1.1. Privados (Break & Fix + Soporte remoto)
+**Servicios base**  
+- Soporte remoto bajo demanda (escritorio, terminal, transferencia de archivos).  
+  - Herramienta: **MeshCentral** o **RustDesk** auto-host.  
+- Eliminación de malware básico, limpieza y hardening ligero.  
+- Copias de seguridad domésticas (NAS o nube) y restauración puntual.  
+- Puesta a punto de Wi-Fi y dispositivos (impresoras, escáneres, smart TV).  
+- “Check-up” trimestral remoto (opcional).
 
-## 🧩 Componentes
+**Add-ons**  
+- Rescate de datos básico (no forense).  
+- Control parental y filtrado doméstico.  
+- Migración de equipo o móvil.
 
-- **Supabase (Docker Compose)**: Postgres 15+, Kong/Gateway 8000, Studio 3000, GoTrue/Auth, PostgREST.
-- **n8n**: Docker + Cloudflared. ✔ Ya operativo en `n8n.techhilfepro.de`.
-- **Cloudflare Tunnel**: ingress por hostname y regla catch-all 404 (última del archivo).  
-- **Correo (Zoho Mail)**: SMTP `smtp.zoho.com`, 587 STARTTLS o 465 SSL, SPF/DKIM/DMARC en DNS.
+> Soporte remoto auto-host viable: **MeshCentral** con control remoto web, terminal y archivos; **RustDesk** con relay/signal propios. (Elegir uno para simplificar). :contentReference[oaicite:0]{index=0}
 
-## 🔐 Seguridad básica
+---
 
-- No exponer 5432/3000. Todo por túnel/Access.  
-- `.env` con secretos fuertes (`JWT_SECRET`, `ANON_KEY`, `SERVICE_ROLE_KEY`) guardado fuera del repo; backup cifrado.  
-- RLS desde el día 1 en tablas con datos de clientes.
+### 1.2. PYMEs “Missing Middle” (3 planes gestionados)
+**Plan Base (starter SMB)**  
+- Inventario y helpdesk ITSM (GLPI): tickets, SLAs, CMDB ligera.  
+- Parches de SO y apps clave, con ventana mensual y reporte.  
+- Monitorización básica (up/down, CPU/RAM/disk), alertas a ntfy/email.  
+- Acceso remoto bajo control (aprobación del usuario o del técnico).  
+- Endurecimiento básico: MFA donde aplique, políticas mínimas de contraseñas.
 
-## 🗄️ Datos (MVP)
+**Plan Grow**  
+- Todo el Base +  
+- Automatización de parches y despliegues (workflows).  
+- Políticas de seguridad y baseline (CIS/Grundschutz-lite), con evidencias.  
+- Backups 3-2-1 (con pruebas de restauración mensuales).  
+- Portal de cliente con tablero de tickets/SLAs/activos.
 
-- Tablas: `clientes`, `sitios`, `dispositivos`, `tickets`, `contratos`, `suscripciones`, `eventos_rmm`, `users`.
-- Vistas: `v_dispositivos_sin_parchear`, `v_tickets_sla_vencidos`, `v_clientes_mrr`.
-- RLS: lectura por tenant, escritura por técnico, auditoría admin.
+**Plan Pro**  
+- Todo el Grow +  
+- Gestión de identidades y SSO donde aplique, Zero Trust por aplicación.  
+- Telemetría avanzada de endpoints (queries, compliance checks).  
+- Análisis de riesgos y simulacros (table-top) con reportes trimestrales.  
+- Preparación/soporte a auditorías NIS2-lite (si el cliente cualifica por cadena de suministro).
 
-## ⚙️ Automatizaciones n8n (primeras)
+> Referencias para baseline de seguridad: **NIS2** (ENISA) y **BSI IT-Grundschutz** para prácticas mínimas y evidencias. Úsalas como marcos de control “lite” en SMB. :contentReference[oaicite:1]{index=1}
 
-1) **Backup nocturno Postgres** → `/opt/supabase/backups` + espejo S3/NAS.  
-2) **Onboarding cliente** → inserta en `clientes`, crea usuario Auth, email bienvenida.  
-3) **Ingesta alertas RMM** → webhook → `eventos_rmm` → si crítico, abre ticket.  
-4) **Facturación ligera** → cambios en `suscripciones` disparan payload a pasarela.
+---
 
-## 🩺 Observabilidad
+## 2) Frontend: qué debe mostrar y vender 🎯
 
-- Healthchecks: `api.*`, `studio.*`, `n8n.*`.  
-- Alertas: ntfy/Telegram cuando falle healthcheck o backup.
+**Página principal**  
+- Propuesta de valor clara para **privados** y **PYMEs**.  
+- CTA: “Reserva soporte remoto ahora” y “Agenda evaluación gratuita”.
 
-## 🧯 Backups y retención
+**Paquetes**  
+- Tabla comparativa (Base/Grow/Pro) con bullets de valor y SLAs públicos.  
+- Para privados: “Soporte bajo demanda” + “Plan hogar” opcional (horas/bonos).
 
-- Diario (7 días), semanal (4), mensual (6).  
-- **Restauración de prueba mensual** en base de staging.
+**Flujos clave de conversión**  
+- Formulario de “Ticket rápido” (crea caso en GLPI).  
+- Lead magnet SMB: checklist NIS2-lite o “10 controles mínimos” con descarga.  
+- Agendamiento integrado (calendario) para onboarding/evaluaciones.
 
-## 🛣️ Fases del roadmap
+**Portal de cliente (más adelante)**  
+- Tickets, SLAs, activos, estado de parches, próximas ventanas, informes.  
+- Descarga del **agente** o “launcher” remoto (si aplicas Mesh/RustDesk asistido).
 
-### Fase 1 — Correo/Auth y túneles de Supabase
-- [ ] Corregir DNS: eliminar/corregir TLSA `_25._tcp.<host>` con dobles puntos, si existe.
-- [ ] Verificar SPF/DKIM/DMARC de `techhilfepro.de`.
-- [ ] Configurar `GOTRUE_SMTP_*` con Zoho (587 STARTTLS).
-- [ ] Crear hostnames `api.techhilfepro.de` y `studio.techhilfepro.de` en tunnel; añadir catch-all 404.
+> GLPI cubre helpdesk, SLAs, formularios de catálogo y CMDB de forma gratuita; excelente para que el frontend “venda” algo que el backend ya soporta. :contentReference[oaicite:2]{index=2}
 
-### Fase 2 — Backups + Observabilidad
-- [ ] Job `pg_dump` + rotación; subir a S3/NAS.
-- [ ] UptimeKuma/healthchecks y alertas a ntfy.
+---
 
-### Fase 3 — Modelado y RLS por tenant
-- [ ] Migraciones SQL (tablas/vistas).
-- [ ] Políticas RLS y tests.
+## 3) Backend: qué lo soporta y cómo escalar ⚙️
 
-### Fase 4 — Automatizaciones n8n
-- [ ] Flujos 1–4 del MVP.
-- [ ] Logs y manejo de errores.
+**Capa de datos (Supabase, Postgres)**  
+- Tablas: `clientes`, `sitios`, `usuarios`, `activos`, `tickets`, `servicios`, `suscripciones`, `eventos_monitor`, `parches`, `backups`, `facturacion`.  
+- RLS por tenant; roles: `cliente_user`, `cliente_admin`, `thp_tech`, `thp_admin`.  
+- Vistas: `v_sla_breach`, `v_parches_pendientes`, `v_backups_fallidos`.  
+- API REST y Auth nativos de Supabase (PostgREST + GoTrue). :contentReference[oaicite:3]{index=3}
 
-## 🧪 Comandos de verificación (ejemplos)
+**Automatización (n8n)**  
+- Workflows:  
+  1) **Onboarding cliente**: crea registros, dispara email de bienvenida, alta en GLPI.  
+  2) **Patching**: ingestión de resultados, recalcula “riesgo parches” y notifica.  
+  3) **Backups**: verifica checks diarios y abre ticket si hay fallo.  
+  4) **Facturación**: genera payloads de cobro al cambiar suscripciones. :contentReference[oaicite:4]{index=4}
 
-### DNS/TLSA
-```bash
-# ¿Existe TLSA mal formado? (doble punto suele causar "invalid empty label")
-dig +short TLSA _25._tcp.mail.techhilfepro.de
+**Soporte remoto**  
+- **Opción A**: MeshCentral auto-host (control remoto web).  
+- **Opción B**: RustDesk auto-host (relay/signal hbbr/hbbs).  
+- **Opción cloud temporal**: Action1 para patching “free 200 endpoints” mientras escalas. :contentReference[oaicite:5]{index=5}
+
+**Observabilidad**  
+- Monitorización: Zabbix/Icinga para hosts/servicios y agents.  
+- Alertas a ntfy/email/Telegram.  
+- Healthchecks para `api.*`, `studio.*`, `n8n.*` vía Cloudflare/Zero Trust. 
+
+**Perímetro y acceso**  
+- Cloudflare Zero Trust (Access + Tunnels) para exponer `api.*`, `studio.*`, `n8n.*` sin IP pública, con políticas de acceso por identidad. :contentReference[oaicite:7]{index=7}
+
+**Escalabilidad**  
+- Base: Docker Compose.  
+- Crecimiento: separar Postgres en VM gestionada o bare-metal; mover servicios a **k3s**.  
+- CDN y WAF: Cloudflare delante del frontend; Zero Trust para internos.
+
+---
+
+## 4) Arquitectura objetivo (ASCII) 🧱
+
+
