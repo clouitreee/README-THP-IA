@@ -1,110 +1,82 @@
-# Tech Hilfe Pro · Infra MSP · Supabase + n8n + TRMM
+# THP-MSP Roadmap (Infra 2025) 🚀
 
-> Objetivo: orquestación segura con túneles, RLS, automatizaciones n8n, backups con retención y observabilidad saneada. Nada expuesto a lo bruto.
+> Estado: Supabase + n8n autoalojados; túnel activo para n8n. Pendiente: correo/Auth, túneles para Supabase, backups, observabilidad y hardening.
 
-## 🧭 Fases
-
-1. **DNS & Túneles** (Cloudflare)
-   - Crear subdominios: `api.techhilfepro.de`, `studio.techhilfepro.de`, `n8n.techhilfepro.de`.
-   - Ingress en `cloudflared`:
-     - `api.*` → servicio Supabase REST/Kong interno.
-     - `studio.*` → Supabase Studio (solo IPs/Zero Trust).
-     - `n8n.*` → n8n:5678 con WebSockets OK.
-   - Cerrar cualquier exposición directa de 5432/8000/3000.
-
-2. **SMTP / Auth**
-   - En `.env` de Supabase: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_ADMIN_EMAIL`, `SMTP_SENDER_NAME`.
-   - Verificar envío de confirmación y reset en GoTrue.
-
-3. **Modelado de datos (MVP)**
-   - Esquemas/tablas: `clientes`, `sitios`, `dispositivos`, `tickets`, `contratos`, `suscripciones`, `eventos_rmm`, `users`.
-   - Vistas: `v_dispositivos_sin_parchear`, `v_tickets_sla_vencidos`, `v_clientes_mrr`.
-
-4. **Seguridad**
-   - RLS por tenant desde el día 1.
-   - Roles: `anon` lectura pública mínima, `service_role` para automatizaciones, `admin` auditoría.
-   - Zero Trust para Studio y n8n admin.
-
-5. **Automatización n8n (v1)**
-   - Backup DB nocturno → `/opt/supabase/backups/YYYY/MM/` y espejo S3/NAS.
-   - Onboarding cliente: alta + usuario + email + ticket inicial.
-   - Ingesta TRMM: webhook → `eventos_rmm` → ticket crítico.
-   - Facturación ligera: cambios en `suscripciones` → payload pasarela.
-
-6. **Backups & Retención**
-   - Política: 7 diarias, 4 semanales, 6 mensuales.
-   - Prueba de restauración mensual en `staging`.
-   - Healthcheck de inicio/fin de backup.
-
-7. **Observabilidad**
-   - Uptime Kuma: monitores `api.*`, `studio.*`, `n8n.*`.
-   - Alertas ntfy/Telegram a fallo de healthcheck o backup.
-
-8. **TRMM convivencia**
-   - Reservar 80/443 para TRMM.
-   - Si NATS standard: abrir 4222/TCP.
-   - Agentes siempre salientes por 443 hacia tus dominios.
-
-9. **Actualizaciones & Rollback**
-   - `docker compose pull && up -d`, verificación, si falla → rollback a imágenes previas y `.env` anterior.
-   - Etiquetar releases infra.
-
-10. **Escalado**
-   - Migrar a Swarm/k3s cuando toque.
-   - Separar Postgres en host o instancia dedicada.
-
----
-
-## 🧩 Diagrama lógico (final esperado)
+## 🧭 Arquitectura objetivo (vista rápida)
 
 Internet
   │
-  │  [Cloudflare]
-  │   ┌────────────────────────────────────────────────────────┐
-  │   │ DNS + Zero Trust + Túneles                            │
-  │   │  api.techhilfepro.de  → cloudflared →  http://supabase-kong:8000
-  │   │  studio.techhilfepro.de → cloudflared → http://studio:3000 (ZT/IP allow)
-  │   │  n8n.techhilfepro.de   → cloudflared → http://n8n:5678 (WS)         │
-  │   └────────────────────────────────────────────────────────┘
-  │
-Server (Docker)
-┌────────────────────────────────────────────────────────────────────────────┐
-│                             Docker network: supanet                         │
-│  ┌───────────────┐   ┌───────────┐   ┌──────────┐   ┌─────────────┐        │
-│  │ cloudflared   │   │ kong(REST)│   │ studio   │   │ n8n (5678)  │        │
-│  └─────▲─────────┘   └────▲──────┘   └────▲─────┘   └──────▲──────┘        │
-│        │                  │               │               │                │
-│        │          ┌───────┴────────┐      │               │                │
-│        │          │ supabase suite │      │               │                │
-│        │          │ (auth,rest,    │      │               │                │
-│        │          │ realtime,      │      │               │                │
-│        │          │ storage, etc.) │      │               │                │
-│        │          └───────▲────────┘      │               │                │
-│                ┌──────────┴──────┐        │               │                │
-│                │ postgres (5432) │◄───────┘        ┌──────┴───────┐        │
-│                │  /var/lib/pg    │                 │ uptime-kuma  │        │
-│                └────────▲────────┘                 └──────▲───────┘        │
-│                         │        ┌─────────────────────────┴─────────────┐  │
-│                   backups cron   │   /opt/supabase/backups + S3/NAS      │  │
-│                         │        └───────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────────────┘
+  ▼
+Cloudflare (DNS + Zero Trust)
+  │  ├─ CNAME/AAAA → Argo Tunnel (cloudflared)
+  │  └─ Access (opcional) con policies por email/IP
+  ▼
+cloudflared @ server01
+  ├─ api.techhilfepro.de   → http://127.0.0.1:8000    (Supabase API Gateway)
+  ├─ studio.techhilfepro.de→ http://127.0.0.1:3000    (Supabase Studio)
+  ├─ n8n.techhilfepro.de   → http://127.0.0.1:5678    (n8n)
+  └─ fallback              → http_status:404
+                           (sin puerto 5432 expuesto)
 
----
+## 🧩 Componentes
 
-## 🔐 Variables críticas
+- **Supabase (Docker Compose)**: Postgres 15+, Kong/Gateway 8000, Studio 3000, GoTrue/Auth, PostgREST.
+- **n8n**: Docker + Cloudflared. ✔ Ya operativo en `n8n.techhilfepro.de`.
+- **Cloudflare Tunnel**: ingress por hostname y regla catch-all 404 (última del archivo).  
+- **Correo (Zoho Mail)**: SMTP `smtp.zoho.com`, 587 STARTTLS o 465 SSL, SPF/DKIM/DMARC en DNS.
 
-- Supabase: `JWT_SECRET`, `ANON_KEY`, `SERVICE_ROLE_KEY`
-- SMTP: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_ADMIN_EMAIL`, `SMTP_SENDER_NAME`
-- n8n: `N8N_HOST`, `N8N_PORT`, `WEBHOOK_URL`, `N8N_ENCRYPTION_KEY`
-- Cloudflare: credenciales de `cloudflared` (token de túnel)
-- TRMM: dominios/puertos y, si aplica, `NATS` 4222
+## 🔐 Seguridad básica
 
----
+- No exponer 5432/3000. Todo por túnel/Access.  
+- `.env` con secretos fuertes (`JWT_SECRET`, `ANON_KEY`, `SERVICE_ROLE_KEY`) guardado fuera del repo; backup cifrado.  
+- RLS desde el día 1 en tablas con datos de clientes.
 
-## ✅ Checklist de “no volver a tropezar”
-- [ ] Nada expuesto directamente (5432/3000/8000) fuera del túnel.
-- [ ] RLS activo antes de cargar datos reales.
-- [ ] SMTP probado con confirmación y reset.
-- [ ] Backups con retención + prueba de restore.
-- [ ] Uptime Kuma con alertas.
-- [ ] Reglas ingress revisadas después de cada cambio.
+## 🗄️ Datos (MVP)
+
+- Tablas: `clientes`, `sitios`, `dispositivos`, `tickets`, `contratos`, `suscripciones`, `eventos_rmm`, `users`.
+- Vistas: `v_dispositivos_sin_parchear`, `v_tickets_sla_vencidos`, `v_clientes_mrr`.
+- RLS: lectura por tenant, escritura por técnico, auditoría admin.
+
+## ⚙️ Automatizaciones n8n (primeras)
+
+1) **Backup nocturno Postgres** → `/opt/supabase/backups` + espejo S3/NAS.  
+2) **Onboarding cliente** → inserta en `clientes`, crea usuario Auth, email bienvenida.  
+3) **Ingesta alertas RMM** → webhook → `eventos_rmm` → si crítico, abre ticket.  
+4) **Facturación ligera** → cambios en `suscripciones` disparan payload a pasarela.
+
+## 🩺 Observabilidad
+
+- Healthchecks: `api.*`, `studio.*`, `n8n.*`.  
+- Alertas: ntfy/Telegram cuando falle healthcheck o backup.
+
+## 🧯 Backups y retención
+
+- Diario (7 días), semanal (4), mensual (6).  
+- **Restauración de prueba mensual** en base de staging.
+
+## 🛣️ Fases del roadmap
+
+### Fase 1 — Correo/Auth y túneles de Supabase
+- [ ] Corregir DNS: eliminar/corregir TLSA `_25._tcp.<host>` con dobles puntos, si existe.
+- [ ] Verificar SPF/DKIM/DMARC de `techhilfepro.de`.
+- [ ] Configurar `GOTRUE_SMTP_*` con Zoho (587 STARTTLS).
+- [ ] Crear hostnames `api.techhilfepro.de` y `studio.techhilfepro.de` en tunnel; añadir catch-all 404.
+
+### Fase 2 — Backups + Observabilidad
+- [ ] Job `pg_dump` + rotación; subir a S3/NAS.
+- [ ] UptimeKuma/healthchecks y alertas a ntfy.
+
+### Fase 3 — Modelado y RLS por tenant
+- [ ] Migraciones SQL (tablas/vistas).
+- [ ] Políticas RLS y tests.
+
+### Fase 4 — Automatizaciones n8n
+- [ ] Flujos 1–4 del MVP.
+- [ ] Logs y manejo de errores.
+
+## 🧪 Comandos de verificación (ejemplos)
+
+### DNS/TLSA
+```bash
+# ¿Existe TLSA mal formado? (doble punto suele causar "invalid empty label")
+dig +short TLSA _25._tcp.mail.techhilfepro.de
